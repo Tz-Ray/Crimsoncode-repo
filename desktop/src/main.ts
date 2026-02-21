@@ -2,6 +2,11 @@ import { app, BrowserWindow } from 'electron';
 import path from 'node:path';
 import started from 'electron-squirrel-startup';
 
+// Add this immediately after your imports
+app.disableHardwareAcceleration();
+
+// The rest of your code (createWindow, etc.) follows...
+
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) {
   app.quit();
