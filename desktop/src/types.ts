@@ -5,4 +5,5 @@ export type Task = {
   date: string;       // "YYYY-MM-DD"
   time?: string;      // "HH:mm" optional
   completed: boolean;
+  priority: 1 | 2 | 3;
 };
