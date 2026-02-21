@@ -25,6 +25,7 @@ export default function App() {
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [tasks, setTasks] = useState<Task[]>(loadTasks);
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskDesc, setNewTaskDesc] = useState("");
   const [newTaskTime, setNewTaskTime] = useState("");
 
   useEffect(() => {
@@ -45,6 +46,7 @@ export default function App() {
     const task: Task = {
       id: crypto.randomUUID(),
       title,
+      description: newTaskDesc,
       date: selectedDateKey,
       time: newTaskTime || undefined,
       completed: false,
@@ -52,6 +54,7 @@ export default function App() {
 
     setTasks((prev) => [...prev, task]);
     setNewTaskTitle("");
+    setNewTaskDesc("");
     setNewTaskTime("");
   }
 
@@ -163,6 +166,13 @@ export default function App() {
             onChange={(e) => setNewTaskTitle(e.target.value)}
             placeholder="Task title"
           />
+          <textarea
+            value={newTaskDesc}
+            onChange={(e) => setNewTaskDesc(e.target.value)}
+            placeholder="Add description ..."
+            rows={3}
+            style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd', fontFamily: 'inherit' }}
+          /> 
           <input
             type="time"
             value={newTaskTime}
@@ -182,25 +192,64 @@ export default function App() {
               style={{
                 border: "1px solid #ddd",
                 borderRadius: 8,
-                padding: 8,
+                padding: 10,
                 display: "grid",
                 gridTemplateColumns: "auto 1fr auto",
-                gap: 8,
-                alignItems: "center",
+                gap: 12,
+                alignItems: "start", 
+                marginBottom: 8,
+                background: task.completed ? "#f9f9f9" : "white"
               }}
             >
               <input
                 type="checkbox"
                 checked={task.completed}
                 onChange={() => toggleTask(task.id)}
+                style={{ marginTop: 4 }}
               />
+
               <div>
-                <div style={{ textDecoration: task.completed ? "line-through" : "none" }}>
+                <div style={{ 
+                  fontWeight: 600, 
+                  textDecoration: task.completed ? "line-through" : "none",
+                  color: task.completed ? "#888" : "#000"
+                }}>
                   {task.title}
                 </div>
-                {task.time && <div style={{ fontSize: 12, color: "#666" }}>{task.time}</div>}
+
+                {task.description && (
+                  <div style={{
+                    fontSize: 13,
+                    color: task.completed ? "#aaa" : "#555",
+                    marginTop: 4,
+                    whiteSpace: "pre-wrap",
+                    lineHeight: "1.4"
+                  }}>
+                    {task.description}
+                  </div>
+                )}
+
+                {task.time && (
+                  <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
+                    {task.time}
+                  </div>
+                )}
               </div>
-              <button onClick={() => deleteTask(task.id)}>Delete</button>
+
+              <button 
+                onClick={() => deleteTask(task.id)}
+                style={{
+                  padding: "4px 8px",
+                  cursor: "pointer",
+                  background: "#fff",
+                  border: "1px solid #ddd",
+                  borderRadius: 4,
+                  fontSize: 12,
+                  color: "#d9534f"
+                }}
+              >
+                Delete
+              </button>
             </div>
           ))}
         </div>
