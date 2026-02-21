@@ -89,7 +89,7 @@ export default function App() {
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
           <button style={{ fontWeight: "bold" }}>Month</button>
           <button disabled>Week</button>
-          <button disabled>Day</button>
+          <button style={{fontWeight: "bold"}}>Day</button>
           <button disabled>Year</button>
         </div>
 
@@ -147,6 +147,7 @@ export default function App() {
                     .map((t) => (
                       <div key={t.id} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                         • {t.title}
+                      , {t.time}
                       </div>
                     ))}
                 </div>
