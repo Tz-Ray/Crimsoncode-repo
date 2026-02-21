@@ -27,6 +27,7 @@ export default function App() {
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDesc, setNewTaskDesc] = useState("");
   const [newTaskTime, setNewTaskTime] = useState("");
+  const [priority, setPriority] = useState("1");
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
@@ -145,7 +146,12 @@ export default function App() {
                     .filter((t) => t.date === toDateKey(day))
                     .slice(0, 2)
                     .map((t) => (
-                      <div key={t.id} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <div key={t.id} style={{ whiteSpace: "nowrap",
+                       overflow: "hidden", 
+                       textOverflow: "ellipsis", 
+                       color: t.completed ? "#2e7d32" : "inherit",
+                       textDecoration: t.completed ? "line-through" : "none",
+                       opacity: t.completed ? 0.7 : 1 }}>
                         • {t.title}
                       , {t.time}
                       </div>
@@ -179,6 +185,16 @@ export default function App() {
             value={newTaskTime}
             onChange={(e) => setNewTaskTime(e.target.value)}
           />
+          <select
+            value = {priority}
+            onChange={(e) => setPriority(e.target.value)}
+            style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+          >
+            <option value="1">Priority 1 (High)</option>
+            <option value="2">Priority 2 (Medium)</option>
+            <option value="3">Priority 3 (Low)</option>
+          </select>
+          
           <button onClick={addTask}>Add Task</button>
         </div>
 
