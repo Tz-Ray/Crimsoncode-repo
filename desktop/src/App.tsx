@@ -20,6 +20,7 @@ import { runAiAction } from "./aiClient";
 
 const STORAGE_KEY = "crimsoncode_tasks_v1";
 
+// load tasks from local storage
 function loadTasks(): Task[] {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
@@ -54,22 +55,29 @@ type AiSummaryResult = {
 };
 
 export default function App() {
+  // calender control
   const [anchorDate, setAnchorDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
+
+  // tasks states
   const [taskViewMode, setTaskViewMode] = useState<"day" | "week" | "month">("day");
   const [tasks, setTasks] = useState<Task[]>(loadTasks);
 
+  // task properties
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDesc, setNewTaskDesc] = useState("");
   const [newTaskTime, setNewTaskTime] = useState("");
   const [newPriorityValue, setPriority] = useState<1 | 2 | 3>(1);
 
+  // ai properties
   const [aiSummary, setAiSummary] = useState<AiSummaryResult | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string>("");
 
+  // notifications
   const [dueSoonTasks, setDueSoonTasks] = useState<Task[]>([]);
 
+  // when task list changes, change in local storage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
   }, [tasks]);
@@ -99,15 +107,19 @@ export default function App() {
   }, [tasks]);
   // --- Notification Logic End ---
 
+  // generate days in month for grid
   const monthDays = useMemo(() => buildMonthGrid(anchorDate), [anchorDate]);
+  
+  // set date
   const selectedDateKey = toDateKey(selectedDate);
 
   // Filter tasks by selected view mode
   const filteredTasks = useMemo(() => {
+    // display day tasks
     if (taskViewMode === "day") {
       return tasks.filter((t) => t.date === selectedDateKey);
     }
-
+    // display week tasks
     if (taskViewMode === "week") {
       const start = startOfWeek(selectedDate);
       const end = endOfWeek(selectedDate);
@@ -116,7 +128,7 @@ export default function App() {
         return isWithinInterval(taskDate, { start, end });
       });
     }
-
+    // display month tasks
     if (taskViewMode === "month") {
       return tasks.filter((t) => {
         const taskDate = new Date(t.date + "T00:00:00");
@@ -130,7 +142,7 @@ export default function App() {
     return [];
   }, [tasks, taskViewMode, selectedDate, selectedDateKey, anchorDate]);
 
-  // Sort tasks by date/time
+  // Sort tasks by date/time in order
   const sortedTasks = useMemo(() => {
     return [...filteredTasks].sort((a, b) => {
       if (a.date !== b.date) return a.date.localeCompare(b.date);
@@ -153,6 +165,7 @@ export default function App() {
     };
 
     setTasks((prev) => [...prev, task]);
+    // reset
     setNewTaskTitle("");
     setNewTaskDesc("");
     setNewTaskTime("");
@@ -276,6 +289,7 @@ export default function App() {
     >
       {/* Calendar side */}
       <div style={{ padding: 16, borderRight: "1px solid #ddd", overflowY: "auto" }}>
+        {/* calender navigation */}
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
           <button onClick={() => setAnchorDate(subMonths(anchorDate, 1))}>◀</button>
           <button onClick={jumpToToday}>Today</button>
