@@ -137,13 +137,19 @@ async function summarizeTasksAction({ payload, context }) {
             },
         };
     } catch (err) {
+        console.warn("[summarizeTasks] Gemini failed, using fallback:", err);
+
+        const debugMessage =
+            err instanceof Error ? err.message : "Unknown Gemini error";
+
         return buildFallbackSummary(
             tasks,
             rangeLabel,
-            "Using local fallback summary (AI unavailable)."
+            `Using local fallback summary (AI unavailable). ${debugMessage}`
         );
     }
 }
+
 
 module.exports = {
     summarizeTasksAction,
