@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { addMonths, subMonths } from "date-fns";
+import { addMonths, subMonths, startOfWeek, endOfWeek, isWithinInterval } from "date-fns";
 import {
   buildMonthGrid,
   toDateKey,
@@ -23,6 +23,7 @@ function loadTasks(): Task[] {
 export default function App() {
   const [anchorDate, setAnchorDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
+  const [taskViewMode, setTaskViewMode] = useState<"day" | "week" | "month">("day");
   const [tasks, setTasks] = useState<Task[]>(loadTasks);
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDesc, setNewTaskDesc] = useState("");
@@ -35,9 +36,41 @@ export default function App() {
   const monthDays = useMemo(() => buildMonthGrid(anchorDate), [anchorDate]);
   const selectedDateKey = toDateKey(selectedDate);
 
-  const tasksForSelectedDay = tasks
-    .filter((t) => t.date === selectedDateKey)
-    .sort((a, b) => (a.time || "99:99").localeCompare(b.time || "99:99"));
+  // handle switching between day, month, year
+  const filteredTasks = useMemo(() => {
+
+    if (taskViewMode === "day"){
+      return tasks.filter((t) => t.date === selectedDateKey);
+    }
+
+    if (taskViewMode === "week") {
+        const start = startOfWeek(selectedDate);
+        const end = endOfWeek(selectedDate);
+        return tasks.filter((t) => {
+          const taskDate = new Date(t.date + "T00:00:00");
+          return isWithinInterval(taskDate, { start, end });
+        });
+      }
+
+    if (taskViewMode === "month") {
+      return tasks.filter((t) => {
+        const taskDate = new Date(t.date + "T00:00:00");
+        return (
+          taskDate.getMonth() === anchorDate.getMonth() &&
+          taskDate.getFullYear() === anchorDate.getFullYear()
+        );
+      });
+    }
+    return [];
+  }, [tasks, taskViewMode, selectedDate, selectedDateKey, anchorDate]);
+
+  // sorts tasks based on data so they show up in order
+  const sortedTasks = useMemo(() => {
+    return [...filteredTasks].sort((a, b) => {
+      if (a.date !== b.date) return a.date.localeCompare(b.date);
+      return (a.time || "99:99").localeCompare(b.time || "99:99");
+    });
+  }, [filteredTasks]);
 
   function addTask() {
     const title = newTaskTitle.trim();
@@ -76,21 +109,12 @@ export default function App() {
   return (
     <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", height: "100vh", fontFamily: "sans-serif" }}>
       {/* Calendar side */}
-      <div style={{ padding: 16, borderRight: "1px solid #ddd" }}>
-        {/* Header */}
+      <div style={{ padding: 16, borderRight: "1px solid #ddd", overflowY: "auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
           <button onClick={() => setAnchorDate(subMonths(anchorDate, 1))}>◀</button>
           <button onClick={() => setAnchorDate(new Date())}>Today</button>
           <button onClick={() => setAnchorDate(addMonths(anchorDate, 1))}>▶</button>
           <h2 style={{ margin: "0 0 0 8px" }}>{format(anchorDate, "MMMM yyyy")}</h2>
-        </div>
-
-        {/* Placeholder view bar (for later) */}
-        <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
-          <button style={{ fontWeight: "bold" }}>Month</button>
-          <button disabled>Week</button>
-          <button disabled>Day</button>
-          <button disabled>Year</button>
         </div>
 
         {/* Weekday labels */}
@@ -101,7 +125,7 @@ export default function App() {
             </div>
           ))}
         </div>
-
+        
         {/* Month grid */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6 }}>
           {monthDays.map((day) => {
@@ -111,7 +135,10 @@ export default function App() {
             return (
               <button
                 key={day.toISOString()}
-                onClick={() => setSelectedDate(day)}
+                onClick={() => {
+                  setSelectedDate(day);
+                  setTaskViewMode("day");
+                }}
                 style={{
                   minHeight: 72,
                   border: "1px solid #ddd",
@@ -138,15 +165,21 @@ export default function App() {
                     </span>
                   )}
                 </div>
-
+                
                 {/* Tiny preview (up to 2 task titles) */}
                 <div style={{ marginTop: 4, fontSize: 11 }}>
                   {tasks
                     .filter((t) => t.date === toDateKey(day))
                     .slice(0, 2)
                     .map((t) => (
-                      <div key={t.id} style={{ whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      <div key={t.id} style={{ whiteSpace: "nowrap",
+                       overflow: "hidden", 
+                       textOverflow: "ellipsis", 
+                       color: t.completed ? "#2e7d32" : "inherit",
+                       textDecoration: t.completed ? "line-through" : "none",
+                       opacity: t.completed ? 0.7 : 1 }}>
                         • {t.title}
+                      , {t.time}
                       </div>
                     ))}
                 </div>
@@ -156,102 +189,148 @@ export default function App() {
         </div>
       </div>
 
-      {/* Selected day panel */}
-      <div style={{ padding: 16 }}>
-        <h3 style={{ marginTop: 0 }}>{format(selectedDate, "EEEE, MMM d")}</h3>
-
-        <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
-          <input
-            value={newTaskTitle}
-            onChange={(e) => setNewTaskTitle(e.target.value)}
-            placeholder="Task title"
-          />
-          <textarea
-            value={newTaskDesc}
-            onChange={(e) => setNewTaskDesc(e.target.value)}
-            placeholder="Add description ..."
-            rows={3}
-            style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd', fontFamily: 'inherit' }}
-          /> 
-          <input
-            type="time"
-            value={newTaskTime}
-            onChange={(e) => setNewTaskTime(e.target.value)}
-          />
-          <button onClick={addTask}>Add Task</button>
-        </div>
-
-        <div style={{ display: "grid", gap: 8 }}>
-          {tasksForSelectedDay.length === 0 && (
-            <div style={{ color: "#666" }}>No tasks for this day.</div>
-          )}
-
-          {tasksForSelectedDay.map((task) => (
-            <div
-              key={task.id}
-              style={{
-                border: "1px solid #ddd",
-                borderRadius: 8,
-                padding: 10,
-                display: "grid",
-                gridTemplateColumns: "auto 1fr auto",
-                gap: 12,
-                alignItems: "start", 
-                marginBottom: 8,
-                background: task.completed ? "#f9f9f9" : "white"
-              }}
-            >
-              <input
-                type="checkbox"
-                checked={task.completed}
-                onChange={() => toggleTask(task.id)}
-                style={{ marginTop: 4 }}
-              />
-
-              <div>
-                <div style={{ 
-                  fontWeight: 600, 
-                  textDecoration: task.completed ? "line-through" : "none",
-                  color: task.completed ? "#888" : "#000"
-                }}>
-                  {task.title}
-                </div>
-
-                {task.description && (
-                  <div style={{
-                    fontSize: 13,
-                    color: task.completed ? "#aaa" : "#555",
-                    marginTop: 4,
-                    whiteSpace: "pre-wrap",
-                    lineHeight: "1.4"
-                  }}>
-                    {task.description}
-                  </div>
-                )}
-
-                {task.time && (
-                  <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
-                    {task.time}
-                  </div>
-                )}
-              </div>
-
-              <button 
-                onClick={() => deleteTask(task.id)}
+      {/* Task View */}
+      <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+        {/* buttons for task view day, moth, year */}
+        <div style={{ padding: 16, borderBottom: "1px solid #eee" }}>
+          <div style={{ display: "flex", background: "#f0f0f0", borderRadius: 8, padding: 4, marginBottom: 16 }}>
+            {(["day", "week", "month"] as const).map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setTaskViewMode(mode)}
                 style={{
-                  padding: "4px 8px",
+                  flex: 1,
+                  border: "none",
+                  padding: "8px 0",
+                  borderRadius: 6,
                   cursor: "pointer",
-                  background: "#fff",
-                  border: "1px solid #ddd",
-                  borderRadius: 4,
-                  fontSize: 12,
-                  color: "#d9534f"
+                  background: taskViewMode === mode ? "white" : "transparent",
+                  fontWeight: taskViewMode === mode ? 600 : 400
                 }}
               >
-                Delete
+                {mode}
+              </button>
+            ))}
+          </div>
+          
+          <h3 style={{ marginTop: 0 }}>
+            {taskViewMode === "day" && format(selectedDate, "EEEE, MMM d")}
+            {taskViewMode === "week" && "This Week"}
+            {taskViewMode === "month" && format(anchorDate, "MMMM yyyy")}
+          </h3>
+        </div>
+        
+        {/* add task apears when on day */}
+        <div style={{ padding: 16, flex: 1, overflowY: "auto" }}>
+          {taskViewMode === "day" && (
+            <div style={{ display: "grid", gap: 8, marginBottom: 20, paddingBottom: 20, borderBottom: "1px solid #eee" }}>
+              <input
+                value={newTaskTitle}
+                onChange={(e) => setNewTaskTitle(e.target.value)}
+                placeholder="Task title"
+                style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+              />
+              <textarea
+                value={newTaskDesc}
+                onChange={(e) => setNewTaskDesc(e.target.value)}
+                placeholder="Add description ..."
+                rows={3}
+                style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd', fontFamily: 'inherit' }}
+              /> 
+              <input
+                type="time"
+                value={newTaskTime}
+                onChange={(e) => setNewTaskTime(e.target.value)}
+                style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+              />
+              <button 
+                onClick={addTask}
+                style={{ padding: '8px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
+              >
+                Add Task
               </button>
             </div>
-          ))}
+          )}
+
+          <div style={{ display: "grid", gap: 8 }}>
+            {sortedTasks.length === 0 && (
+              <div style={{ color: "#666" }}>No tasks for this {taskViewMode}.</div>
+            )}
+
+            {sortedTasks.map((task) => (
+              <div
+                key={task.id}
+                style={{
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: 10,
+                  display: "grid",
+                  gridTemplateColumns: "auto 1fr auto",
+                  gap: 12,
+                  alignItems: "start", 
+                  marginBottom: 8,
+                  background: task.completed ? "#f9f9f9" : "white"
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={task.completed}
+                  onChange={() => toggleTask(task.id)}
+                  style={{ marginTop: 4 }}
+                />
+
+                {/* show dates when not in day view */}
+                <div>
+                  {taskViewMode !== "day" && (
+                    <div style={{ fontSize: 10, color: "#007bff", fontWeight: 700, marginBottom: 4 }}>
+                      {format(new Date(task.date + "T00:00:00"), "MMM d")}
+                    </div>
+                  )}
+
+                  <div style={{ 
+                    fontWeight: 600, 
+                    textDecoration: task.completed ? "line-through" : "none",
+                    color: task.completed ? "#888" : "#000"
+                  }}>
+                    {task.title}
+                  </div>
+
+                  {task.description && (
+                    <div style={{
+                      fontSize: 13,
+                      color: task.completed ? "#aaa" : "#555",
+                      marginTop: 4,
+                      whiteSpace: "pre-wrap",
+                      lineHeight: "1.4"
+                    }}>
+                      {task.description}
+                    </div>
+                  )}
+
+                  {task.time && (
+                    <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
+                      {task.time}
+                    </div>
+                  )}
+                </div>
+
+                <button 
+                  onClick={() => deleteTask(task.id)}
+                  style={{
+                    padding: "4px 8px",
+                    cursor: "pointer",
+                    background: "#fff",
+                    border: "1px solid #ddd",
+                    borderRadius: 4,
+                    fontSize: 12,
+                    color: "#d9534f"
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
         </div>
       </div>
     </div>
