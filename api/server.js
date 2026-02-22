@@ -1,5 +1,7 @@
+const path = require("path");
 const dotenv = require("dotenv");
-dotenv.config();
+
+dotenv.config({ path: path.join(__dirname, ".env") });
 
 const express = require("express");
 const cors = require("cors");
@@ -8,6 +10,10 @@ const aiRouter = require("./ai/router");
 
 const app = express();
 const PORT = process.env.PORT || 3001;
+
+console.log("[env] GEMINI_API_KEY loaded:", !!process.env.GEMINI_API_KEY);
+console.log("[env] GEMINI_MODEL:", process.env.GEMINI_MODEL || "(default)");
+console.log("[env] GEMINI_API_KEY length:", process.env.GEMINI_API_KEY?.length || 0);
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
