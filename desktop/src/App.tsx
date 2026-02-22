@@ -19,16 +19,34 @@ import {
 import type { Task } from "./types";
 import { runAiAction } from "./aiClient";
 
-const STORAGE_KEY = "crimsoncode_tasks_v1";
+const TASKS_STORAGE_KEY = "crimsoncode_tasks_v1";
+const AI_CACHE_STORAGE_KEY = "crimsoncode_ai_cache_v1";
 
-// load tasks from local storage
-function loadTasks(): Task[] {
+// Generic safe JSON loader
+function loadJsonFromStorage<T>(key: string, fallback: T): T {
     try {
-        const raw = localStorage.getItem(STORAGE_KEY);
-        return raw ? JSON.parse(raw) : [];
-    } catch {
-        return [];
+        const raw = localStorage.getItem(key);
+        if (!raw) return fallback;
+        return JSON.parse(raw) as T;
+    } catch (error: unknown) {
+        console.error(`[storage] Failed to read key "${key}"`, error);
+        return fallback;
     }
+}
+
+// Generic safe JSON saver
+function saveJsonToStorage(key: string, value: unknown) {
+    try {
+        localStorage.setItem(key, JSON.stringify(value));
+    } catch (error: unknown) {
+        console.error(`[storage] Failed to write key "${key}"`, error);
+    }
+}
+
+// load tasks from local storage (validated as array)
+function loadTasks(): Task[] {
+    const parsed = loadJsonFromStorage<unknown>(TASKS_STORAGE_KEY, []);
+    return Array.isArray(parsed) ? (parsed as Task[]) : [];
 }
 
 const PRIORITY_COLORS: Record<1 | 2 | 3, string> = {
@@ -64,6 +82,17 @@ type AiSummaryMeta = {
     fallback?: boolean;
 };
 
+type AiCacheEntry = { summary: AiSummaryResult; meta: AiSummaryMeta | null };
+type AiCache = Record<string, AiCacheEntry>;
+
+function loadAiCache(): AiCache {
+    const parsed = loadJsonFromStorage<unknown>(AI_CACHE_STORAGE_KEY, {});
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+        return {};
+    }
+    return parsed as AiCache;
+}
+
 export default function App() {
     // calender control
     const [anchorDate, setAnchorDate] = useState(new Date());
@@ -71,7 +100,9 @@ export default function App() {
 
     // tasks states
     const [taskViewMode, setTaskViewMode] = useState<"day" | "week" | "month">("day");
-    const [tasks, setTasks] = useState<Task[]>(loadTasks);
+    const [tasks, setTasks] = useState<Task[]>(() => loadTasks());
+
+    const [aiCache, setAiCache] = useState<AiCache>(() => loadAiCache());
 
     // task properties
     const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -80,10 +111,7 @@ export default function App() {
     const [newPriorityValue, setPriority] = useState<1 | 2 | 3>(1);
 
     // ai properties
-    type AiCacheEntry = { summary: AiSummaryResult; meta: AiSummaryMeta | null };
-    type AiCache = Record<string, AiCacheEntry>;
 
-    const [aiCache, setAiCache] = useState<AiCache>({});
     const [aiLoading, setAiLoading] = useState(false);
     const [aiError, setAiError] = useState<string>("");
 
@@ -91,9 +119,23 @@ export default function App() {
     const [dueSoonTasks, setDueSoonTasks] = useState<Task[]>([]);
 
     // when task list changes, change in local storage
+    // Persist tasks whenever they change
     useEffect(() => {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+        console.log("[storage] saving tasks:", tasks.length);
+        saveJsonToStorage(TASKS_STORAGE_KEY, tasks);
     }, [tasks]);
+
+    // Persist AI cache whenever it changes
+    useEffect(() => {
+        console.log("[storage] saving aiCache entries:", Object.keys(aiCache).length);
+        saveJsonToStorage(AI_CACHE_STORAGE_KEY, aiCache);
+    }, [aiCache]);
+
+    // One-time mount check (helps confirm what's loaded on startup)
+    useEffect(() => {
+        console.log("[storage] loaded tasks on startup:", tasks.length);
+        console.log("[storage] loaded aiCache keys on startup:", Object.keys(aiCache).length);
+    }, []);
 
     // --- Notification Logic Start ---
     useEffect(() => {
@@ -313,8 +355,8 @@ export default function App() {
                     meta: (response.meta as AiSummaryMeta) || null,
                 },
             }));
-        } catch (err) {
-            setAiError(err instanceof Error ? err.message : "Unknown error");
+        } catch (error: unknown) {
+            setAiError(error instanceof Error ? error.message : "Unknown error");
         } finally {
             setAiLoading(false);
         }
