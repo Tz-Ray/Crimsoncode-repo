@@ -14,21 +14,20 @@ async function generateStructuredTaskSummary({ tasks, rangeLabel, context }) {
   const ai = getGeminiClient();
 
   const prompt = `
-You are a productivity assistant. Summarize the provided tasks.
-Rules:
-- Use only the provided task data.
-- Do not invent tasks or dates.
-- Be concise and actionable.
-- Keep suggestions generic and practical.
+  You are a High-Performance Productivity Coach. 
+  TASK: Create a 7-day "Plan of Attack" based on the provided JSON.
 
-Input context:
-- rangeLabel: ${rangeLabel || "Task Summary"}
-- view: ${context?.view || "unknown"}
-- rangeStart: ${context?.rangeStart || "unknown"}
-- rangeEnd: ${context?.rangeEnd || "unknown"}
+  CRITICAL INSTRUCTION: 
+  - Your 'headline' must mention the specific date range (Next 7 Days).
+  - Your 'summary' should focus ONLY on the most urgent 3 tasks.
+  - Your 'suggestedWorkflow' must be a 3-step actionable sequence. 
+    Step 1: What to finish in the next 24 hours.
+    Step 2: What to prepare for mid-week.
+    Step 3: What to delegate or defer to the weekend.
 
-Tasks JSON:
-${JSON.stringify(tasks, null, 2)}
+  Current Date context: ${context?.rangeStart}
+  Tasks:
+  ${JSON.stringify(tasks, null, 2)}
   `.trim();
 
   const responseSchema = {
@@ -36,6 +35,11 @@ ${JSON.stringify(tasks, null, 2)}
     properties: {
       headline: { type: Type.STRING },
       summary: { type: Type.STRING },
+      suggestedWorkflow: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
+        description: "A 3-step prioritized plan based on the next 7 days"
+      },
       stats: {
         type: Type.OBJECT,
         properties: {
@@ -66,8 +70,10 @@ ${JSON.stringify(tasks, null, 2)}
         type: Type.ARRAY,
         items: { type: Type.STRING },
       },
+      suggestions: { type: Type.ARRAY, items: { type: Type.STRING } },
+      warnings: { type: Type.ARRAY, items: { type: Type.STRING } },
     },
-    required: ["headline", "summary", "stats", "upcoming", "suggestions", "warnings"],
+    required: ["headline", "summary", "stats", "upcoming", "suggestions", "suggestedWorkflow", "warnings"],
   };
 
   const result = await ai.models.generateContent({

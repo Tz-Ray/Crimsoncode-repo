@@ -39,6 +39,7 @@ const PRIORITY_COLORS: Record<1 | 2 | 3, string> = {
 type AiSummaryResult = {
   headline: string;
   summary: string;
+  suggestedWorkflow?: string[];
   stats?: {
     total: number;
     completed: number;
@@ -236,7 +237,26 @@ export default function App() {
       setAiSummary(null);
 
       const { rangeLabel, rangeStart, rangeEnd } = getAiRangeInfo();
-      const tasksToSummarize = sortedTasks;
+      
+      // --- UPDATED LOGIC START ---
+      let tasksToSummarize;
+
+      if (taskViewMode === "week") {
+        // 1. Force a 7-day window starting from TODAY
+        const today = new Date();
+        const sevenDaysFromNow = new Date();
+        sevenDaysFromNow.setDate(today.getDate() + 7);
+
+        // 2. Filter from 'tasks' (the full list), ignoring the UI's 'sortedTasks'
+        tasksToSummarize = tasks.filter((t) => {
+          const taskDate = new Date(t.date + "T00:00:00");
+          return taskDate >= today && taskDate <= sevenDaysFromNow && !t.completed;
+        });
+        } else {
+          // For Day or Month mode, keep the original behavior
+          tasksToSummarize = sortedTasks;
+        }
+        // --- UPDATED LOGIC END ---
 
       if (tasksToSummarize.length === 0) {
         setAiError(`No tasks in this ${taskViewMode} to summarize.`);
@@ -634,6 +654,27 @@ export default function App() {
               >
                 <div style={{ fontWeight: 700 }}>{aiSummary.headline}</div>
                 <div style={{ marginTop: 6 }}>{aiSummary.summary}</div>
+
+                {/* --- NEW WORKFLOW SECTION --- */}
+                {Array.isArray(aiSummary.suggestedWorkflow) && aiSummary.suggestedWorkflow.length > 0 && (
+                  <div style={{ 
+                    marginTop: 12, 
+                    padding: '10px', 
+                    backgroundColor: '#e6f7ff', // Light blue background
+                    borderRadius: '6px', 
+                    border: '1px solid #91d5ff' 
+                  }}>
+                    <div style={{ fontWeight: 700, fontSize: '13px', color: '#0050b3', marginBottom: '6px' }}>
+                      🚀 7-Day Priority Workflow
+                    </div>
+                    <ul style={{ margin: 0, paddingLeft: '20px', fontSize: '12px', lineHeight: '1.6', color: '#333' }}>
+                      {aiSummary.suggestedWorkflow.map((step, i) => (
+                        <li key={i} style={{ marginBottom: '4px' }}>{step}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                {/* ---------------------------- */}
 
                 {aiSummary.stats && (
                   <div style={{ marginTop: 8, fontSize: 13, color: "#444" }}>
