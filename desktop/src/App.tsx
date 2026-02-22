@@ -174,6 +174,16 @@ export default function App() {
     return tasks.filter((t) => t.date === key).length;
   }
 
+  // handels the funtionality for jumping to the current day
+  function jumpToToday() {
+    // get date
+    const now = new Date();
+    // set to date
+    setAnchorDate(now);
+    setSelectedDate(now);
+    setTaskViewMode("day");
+  }
+
   function getAiRangeInfo() {
     if (taskViewMode === "day") {
       const d = toDateKey(selectedDate);
@@ -268,7 +278,7 @@ export default function App() {
       <div style={{ padding: 16, borderRight: "1px solid #ddd", overflowY: "auto" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
           <button onClick={() => setAnchorDate(subMonths(anchorDate, 1))}>◀</button>
-          <button onClick={() => setAnchorDate(new Date())}>Today</button>
+          <button onClick={jumpToToday}>Today</button>
           <button onClick={() => setAnchorDate(addMonths(anchorDate, 1))}>▶</button>
           <h2 style={{ margin: "0 0 0 8px" }}>{format(anchorDate, "MMMM yyyy")}</h2>
         </div>
@@ -307,7 +317,7 @@ export default function App() {
                 }}
                 style={{
                   minHeight: 72,
-                  border: "1px solid #ddd",
+                  border: isToday(day) ? "2px solid #ddd" : "1px solid #ddd",
                   borderRadius: 8,
                   padding: 6,
                   textAlign: "left",
@@ -325,8 +335,8 @@ export default function App() {
                 >
                   <span
                     style={{
-                      fontWeight: isToday(day) ? 700 : 400,
-                      textDecoration: isToday(day) ? "underline" : "none",
+                      fontWeight: isToday(day) ? 800 : 400,
+                      textDecoration: "none",
                     }}
                   >
                     {format(day, "d")}
