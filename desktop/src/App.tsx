@@ -17,7 +17,7 @@ import {
     format,
     isToday,
 } from "./calendarUtils";
-import type { Task } from "./types";
+import type { Task, PlanDraftTask } from "./types";
 import { runAiAction } from "./aiClient";
 
 const TASKS_STORAGE_KEY = "crimsoncode_tasks_v1";
@@ -83,6 +83,22 @@ type AiSummaryMeta = {
     fallback?: boolean;
 };
 
+type PlanGenerationResult = {
+    headline: string;
+    summary: string;
+    tasks: PlanDraftTask[];
+    warnings?: string[];
+    suggestions?: string[];
+};
+
+type PlanGenerationMeta = {
+    provider: string;
+    model: string;
+    generatedAt: string;
+    cached?: boolean;
+    fallback?: boolean;
+};
+
 type AiCacheEntry = { summary: AiSummaryResult; meta: AiSummaryMeta | null };
 type AiCache = Record<string, AiCacheEntry>;
 
@@ -104,6 +120,22 @@ export default function App() {
     const [tasks, setTasks] = useState<Task[]>(() => loadTasks());
 
     const [aiCache, setAiCache] = useState<AiCache>(() => loadAiCache());
+
+    // Plans state (goal -> generated tasks preview)
+    const [planTitle, setPlanTitle] = useState("");
+    const [planDetails, setPlanDetails] = useState("");
+    const [planStartDate, setPlanStartDate] = useState(() => toDateKey(new Date()));
+    const [planEndDate, setPlanEndDate] = useState(() => {
+        const d = new Date();
+        d.setDate(d.getDate() + 14);
+        return toDateKey(d);
+    });
+    const [planConstraints, setPlanConstraints] = useState("Weekdays only, 5-7pm, every 2 days");
+    const [planPreview, setPlanPreview] = useState<PlanGenerationResult | null>(null);
+    const [planMeta, setPlanMeta] = useState<PlanGenerationMeta | null>(null);
+    const [planLoading, setPlanLoading] = useState(false);
+    const [planError, setPlanError] = useState("");
+    const [planApplied, setPlanApplied] = useState(false);
 
     // task properties
     const [newTaskTitle, setNewTaskTitle] = useState("");
@@ -361,6 +393,97 @@ export default function App() {
         } finally {
             setAiLoading(false);
         }
+    }
+
+    async function generatePlanPreview() {
+        const goalTitle = planTitle.trim();
+        if (!goalTitle) {
+            setPlanError("Please enter a plan title.");
+            return;
+        }
+
+        if (!planStartDate || !planEndDate) {
+            setPlanError("Please choose a start and end date.");
+            return;
+        }
+
+        if (planEndDate < planStartDate) {
+            setPlanError("End date must be on or after start date.");
+            return;
+        }
+
+        try {
+            setPlanLoading(true);
+            setPlanError("");
+            setPlanApplied(false);
+            setPlanPreview(null);
+            setPlanMeta(null);
+
+            const response = await runAiAction({
+                version: "1",
+                action: "generatePlanTasks",
+                payload: {
+                    goalTitle,
+                    goalDetails: planDetails.trim() || undefined,
+                    startDate: planStartDate,
+                    endDate: planEndDate,
+                    constraints: planConstraints.trim() || undefined,
+                    existingTasks: tasks.map((t) => ({
+                        title: t.title,
+                        date: t.date,
+                        time: t.time,
+                        completed: t.completed,
+                    })),
+                },
+                context: {
+                    view: taskViewMode,
+                    rangeStart: planStartDate,
+                    rangeEnd: planEndDate,
+                },
+            });
+
+            if (!response.ok) {
+                setPlanMeta((response.meta as PlanGenerationMeta) || null);
+                setPlanError(response.error?.message || "Plan generation failed");
+                return;
+            }
+
+            setPlanMeta((response.meta as PlanGenerationMeta) || null);
+            setPlanPreview((response.result as PlanGenerationResult) || null);
+        } catch (error: unknown) {
+            setPlanError(error instanceof Error ? error.message : "Unknown plan generation error");
+        } finally {
+            setPlanLoading(false);
+        }
+    }
+
+    function addPlanTasksToCalendar() {
+        if (!planPreview || !Array.isArray(planPreview.tasks) || planPreview.tasks.length === 0) {
+            setPlanError("No generated plan tasks to add.");
+            return;
+        }
+
+        const batchPlanId = crypto.randomUUID();
+
+        const newTasks: Task[] = planPreview.tasks.map((pt) => {
+            const priority = pt.priority && [1, 2, 3].includes(pt.priority) ? pt.priority : 2;
+
+            return {
+                id: crypto.randomUUID(),
+                title: pt.title,
+                description: pt.description,
+                date: pt.date,
+                time: pt.time,
+                completed: false,
+                priority: priority as 1 | 2 | 3,
+                aiGenerated: true,
+                planId: batchPlanId,
+            };
+        });
+
+        setTasks((prev) => [...prev, ...newTasks]);
+        setPlanApplied(true);
+        setPlanError("");
     }
 
     return (
@@ -823,6 +946,179 @@ export default function App() {
                                 )}
                             </div>
                         )}
+
+                    </div>
+                    {/* Plans Section */}
+                    <div style={{ marginTop: 18, borderTop: "1px solid #ddd", paddingTop: 12 }}>
+                        <div style={{ fontWeight: 700, marginBottom: 8 }}>Plans</div>
+                        <div style={{ fontSize: 12, color: "#666", marginBottom: 10 }}>
+                            Turn a goal into scheduled tasks using AI, then review and add them to your calendar.
+                        </div>
+
+                        <div style={{ display: "grid", gap: 8 }}>
+                            <input
+                                value={planTitle}
+                                onChange={(e) => setPlanTitle(e.target.value)}
+                                placeholder='Plan title (e.g. "Study for Biology Exam")'
+                                style={{ padding: "8px", borderRadius: 4, border: "1px solid #ddd" }}
+                            />
+
+                            <textarea
+                                value={planDetails}
+                                onChange={(e) => setPlanDetails(e.target.value)}
+                                placeholder="Details (optional): chapters, topics, deliverables, milestones..."
+                                rows={3}
+                                style={{
+                                    padding: "8px",
+                                    borderRadius: 4,
+                                    border: "1px solid #ddd",
+                                    fontFamily: "inherit",
+                                }}
+                            />
+
+                            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+                                <div>
+                                    <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>Start date</div>
+                                    <input
+                                        type="date"
+                                        value={planStartDate}
+                                        onChange={(e) => setPlanStartDate(e.target.value)}
+                                        style={{ width: "100%", padding: "8px", borderRadius: 4, border: "1px solid #ddd" }}
+                                    />
+                                </div>
+
+                                <div>
+                                    <div style={{ fontSize: 12, marginBottom: 4, color: "#555" }}>End date</div>
+                                    <input
+                                        type="date"
+                                        value={planEndDate}
+                                        onChange={(e) => setPlanEndDate(e.target.value)}
+                                        style={{ width: "100%", padding: "8px", borderRadius: 4, border: "1px solid #ddd" }}
+                                    />
+                                </div>
+                            </div>
+
+                            <textarea
+                                value={planConstraints}
+                                onChange={(e) => setPlanConstraints(e.target.value)}
+                                placeholder="Constraints (free text): Weekdays only, 5-7pm, every 2 days, no Sundays..."
+                                rows={2}
+                                style={{
+                                    padding: "8px",
+                                    borderRadius: 4,
+                                    border: "1px solid #ddd",
+                                    fontFamily: "inherit",
+                                }}
+                            />
+
+                            <div style={{ display: "flex", gap: 8 }}>
+                                <button
+                                    onClick={generatePlanPreview}
+                                    disabled={planLoading}
+                                    style={{
+                                        padding: "8px 10px",
+                                        borderRadius: 6,
+                                        border: "1px solid #ccc",
+                                        cursor: planLoading ? "not-allowed" : "pointer",
+                                        opacity: planLoading ? 0.6 : 1,
+                                        background: "white",
+                                    }}
+                                >
+                                    {planLoading ? "Generating Plan..." : "Generate Plan Tasks"}
+                                </button>
+
+                                <button
+                                    onClick={addPlanTasksToCalendar}
+                                    disabled={!planPreview || planApplied}
+                                    style={{
+                                        padding: "8px 10px",
+                                        borderRadius: 6,
+                                        border: "1px solid #ccc",
+                                        cursor: !planPreview || planApplied ? "not-allowed" : "pointer",
+                                        opacity: !planPreview || planApplied ? 0.6 : 1,
+                                        background: "#f7fff7",
+                                    }}
+                                >
+                                    {planApplied ? "Added to Calendar" : "Add Plan Tasks"}
+                                </button>
+                            </div>
+
+                            {planError && <div style={{ color: "red", fontSize: 13 }}>{planError}</div>}
+
+                            {planPreview && (
+                                <div
+                                    style={{
+                                        marginTop: 8,
+                                        border: "1px solid #ddd",
+                                        borderRadius: 8,
+                                        padding: 10,
+                                        background: "#fafafa",
+                                    }}
+                                >
+                                    <div style={{ fontWeight: 700 }}>{planPreview.headline}</div>
+                                    <div style={{ marginTop: 6, fontSize: 13 }}>{planPreview.summary}</div>
+
+                                    {planMeta && (
+                                        <div style={{ marginTop: 6, fontSize: 12, color: "#666" }}>
+                                            Source: {planMeta.model}
+                                            {planMeta.fallback ? " (fallback)" : ""}
+                                        </div>
+                                    )}
+
+                                    {Array.isArray(planPreview.tasks) && planPreview.tasks.length > 0 && (
+                                        <div style={{ marginTop: 10 }}>
+                                            <div style={{ fontWeight: 600, fontSize: 13, marginBottom: 4 }}>
+                                                Generated Tasks ({planPreview.tasks.length})
+                                            </div>
+                                            <div style={{ display: "grid", gap: 6 }}>
+                                                {planPreview.tasks.map((t, i) => (
+                                                    <div
+                                                        key={`${t.title}-${t.date}-${i}`}
+                                                        style={{
+                                                            border: "1px solid #e5e5e5",
+                                                            borderRadius: 6,
+                                                            padding: 8,
+                                                            background: "white",
+                                                        }}
+                                                    >
+                                                        <div style={{ fontWeight: 600, fontSize: 13 }}>{t.title}</div>
+                                                        <div style={{ fontSize: 12, color: "#666", marginTop: 2 }}>
+                                                            {t.date}
+                                                            {t.time ? ` • ${t.time}` : ""}
+                                                            {t.priority ? ` • P${t.priority}` : ""}
+                                                        </div>
+                                                        {t.description && (
+                                                            <div style={{ fontSize: 12, color: "#555", marginTop: 4 }}>
+                                                                {t.description}
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+
+                                    {Array.isArray(planPreview.suggestions) && planPreview.suggestions.length > 0 && (
+                                        <div style={{ marginTop: 8 }}>
+                                            <div style={{ fontWeight: 600, fontSize: 13 }}>Suggestions</div>
+                                            <ul style={{ marginTop: 4, paddingLeft: 18 }}>
+                                                {planPreview.suggestions.map((s, i) => (
+                                                    <li key={i}>{s}</li>
+                                                ))}
+                                            </ul>
+                                        </div>
+                                    )}
+
+                                    {Array.isArray(planPreview.warnings) && planPreview.warnings.length > 0 && (
+                                        <div style={{ marginTop: 8, color: "#8a6d3b", fontSize: 12 }}>
+                                            {planPreview.warnings.map((w, i) => (
+                                                <div key={i}>⚠ {w}</div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
             </div>
