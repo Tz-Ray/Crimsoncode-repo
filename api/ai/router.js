@@ -37,17 +37,20 @@ router.post("/run", async (req, res) => {
     const { action, payload, context } = parsed.data;
     const actionResult = await runAiAction(action, { payload, context });
 
+    const meta = {
+      provider: actionResult._meta?.provider || "gemini",
+      model: actionResult._meta?.model || "unknown",
+      fallback: !!actionResult._meta?.fallback,
+      generatedAt: new Date().toISOString(),
+    };
+
     if (!actionResult.ok) {
       return res.status(400).json({
         ok: false,
         version: "1",
         action,
         error: actionResult.error,
-        meta: {
-          provider: "gemini",
-          model: "stub",
-          generatedAt: new Date().toISOString(),
-        },
+        meta,
       });
     }
 
@@ -56,11 +59,7 @@ router.post("/run", async (req, res) => {
       version: "1",
       action,
       result: actionResult.result,
-      meta: {
-        provider: "gemini",
-        model: "stub",
-        generatedAt: new Date().toISOString(),
-      },
+      meta,
     });
   } catch (err) {
     return res.status(500).json({
@@ -71,6 +70,12 @@ router.post("/run", async (req, res) => {
         code: "AI_RUN_FAILED",
         message: err instanceof Error ? err.message : "Unknown AI error",
         retryable: true,
+      },
+      meta: {
+        provider: "gemini",
+        model: "unknown",
+        fallback: false,
+        generatedAt: new Date().toISOString(),
       },
     });
   }

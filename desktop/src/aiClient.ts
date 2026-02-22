@@ -16,7 +16,13 @@ export type AiRunResponse = {
   action: string;
   result?: any;
   error?: { code: string; message: string; retryable?: boolean };
-  meta?: { provider: string; model: string; generatedAt: string; cached?: boolean };
+  meta?: {
+    provider: string;
+    model: string;
+    generatedAt: string;
+    cached?: boolean;
+    fallback?: boolean;
+  };
 };
 
 const API_BASE = "http://localhost:3001";
