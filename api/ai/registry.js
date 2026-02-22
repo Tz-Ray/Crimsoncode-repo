@@ -1,10 +1,9 @@
 const { summarizeTasksAction } = require("./actions/summarizeTasks");
+const { generatePlanTasksAction } = require("./actions/generatePlanTasks");
 
 const actionRegistry = {
   summarizeTasks: summarizeTasksAction,
-  // later:
-  // prioritizeTasks: prioritizeTasksAction,
-  // weeklyReview: weeklyReviewAction,
+  generatePlanTasks: generatePlanTasksAction,
 };
 
 async function runAiAction(action, args) {

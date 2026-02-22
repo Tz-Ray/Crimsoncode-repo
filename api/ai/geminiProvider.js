@@ -96,6 +96,102 @@ async function generateStructuredTaskSummary({ tasks, rangeLabel, context }) {
   };
 }
 
+async function generatePlanTasks({
+  goalTitle,
+  goalDetails,
+  startDate,
+  endDate,
+  constraints,
+  existingTasks,
+  context,
+}) {
+  const ai = getGeminiClient();
+
+  const prompt = `
+You are a scheduling assistant for a calendar/task app.
+
+TASK:
+Generate a realistic set of calendar tasks to help the user complete their goal.
+
+REQUIREMENTS:
+- Break the goal into actionable tasks.
+- Schedule tasks ONLY between startDate and endDate.
+- Respect constraints text as best as possible.
+- Return a balanced plan (not all tasks on one day).
+- Prefer concise, specific task titles.
+- Use time only when reasonably inferred from constraints.
+- Priority: 1 = high, 2 = medium, 3 = low.
+- Do NOT include completed tasks.
+- Output must be valid JSON matching the schema.
+
+User goal:
+${JSON.stringify(
+  {
+    goalTitle,
+    goalDetails,
+    startDate,
+    endDate,
+    constraints,
+    timezone: context?.timezone,
+    existingTasks: existingTasks || [],
+  },
+  null,
+  2
+)}
+`.trim();
+
+  const responseSchema = {
+    type: Type.OBJECT,
+    properties: {
+      headline: { type: Type.STRING },
+      summary: { type: Type.STRING },
+      tasks: {
+        type: Type.ARRAY,
+        items: {
+          type: Type.OBJECT,
+          properties: {
+            title: { type: Type.STRING },
+            description: { type: Type.STRING },
+            date: { type: Type.STRING },
+            time: { type: Type.STRING },
+            priority: { type: Type.NUMBER },
+          },
+          required: ["title", "date"],
+        },
+      },
+      warnings: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
+      },
+      suggestions: {
+        type: Type.ARRAY,
+        items: { type: Type.STRING },
+      },
+    },
+    required: ["headline", "summary", "tasks"],
+  };
+
+  const result = await ai.models.generateContent({
+    model: GEMINI_MODEL,
+    contents: prompt,
+    config: {
+      responseMimeType: "application/json",
+      responseSchema,
+    },
+  });
+
+  const text = result.text;
+  if (!text) {
+    throw new Error("Gemini returned an empty response");
+  }
+
+  return {
+    parsed: JSON.parse(text),
+    model: GEMINI_MODEL,
+  };
+}
+
 module.exports = {
   generateStructuredTaskSummary,
+  generatePlanTasks,
 };
