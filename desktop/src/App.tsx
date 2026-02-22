@@ -68,9 +68,36 @@ export default function App() {
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState<string>("");
 
+  const [dueSoonTasks, setDueSoonTasks] = useState<Task[]>([]);
+
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
   }, [tasks]);
+
+  // --- Notification Logic Start ---
+  useEffect(() => {
+    const checkUpcomingTasks = () => {
+    const now = new Date();
+    const oneHourFromNow = new Date(now.getTime() + 60 * 60 * 1000);
+
+    const found = tasks
+    .filter((t) => {
+      if (!t.time || t.completed) return false;
+      const taskDateTime = new Date(`${t.date}T${t.time}:00`);
+      return taskDateTime > now && taskDateTime <= oneHourFromNow;
+    })
+    // Sort so the earliest time (closest) comes first
+    .sort((a, b) => (a.time || "").localeCompare(b.time || ""));
+
+    setDueSoonTasks(found);
+    };
+
+    // Check immediately, then every 60 seconds
+    checkUpcomingTasks();
+    const interval = setInterval(checkUpcomingTasks, 60000);
+    return () => clearInterval(interval);
+  }, [tasks]);
+  // --- Notification Logic End ---
 
   const monthDays = useMemo(() => buildMonthGrid(anchorDate), [anchorDate]);
   const selectedDateKey = toDateKey(selectedDate);
@@ -628,6 +655,60 @@ export default function App() {
           </div>
         </div>
       </div>
+
+      {/* Notification Stack */}
+<div
+  style={{
+    position: "fixed",
+    bottom: "24px",
+    right: "24px",
+    display: "flex",
+    flexDirection: "column-reverse", // Newer/later tasks go to bottom, earliest stay top
+    gap: "12px",
+    zIndex: 9999,
+    pointerEvents: "none", // Allows clicking through the empty space between boxes
+  }}
+>
+  {dueSoonTasks.map((task) => (
+    <div
+      key={task.id}
+      style={{
+        pointerEvents: "auto", // Re-enables clicking for the actual boxes
+        width: "300px",
+        backgroundColor: "#1e1e1e",
+        color: "white",
+        padding: "16px",
+        borderRadius: "12px",
+        boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+        borderLeft: `6px solid ${PRIORITY_COLORS[task.priority as 1|2|3]}`,
+        animation: "slideInRight 0.3s ease-out",
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontWeight: 700, fontSize: "11px", color: "#faad14", letterSpacing: "0.5px" }}>
+          UPCOMING
+        </span>
+        <button 
+          onClick={() => setDueSoonTasks(prev => prev.filter(t => t.id !== task.id))}
+          style={{ background: "none", border: "none", color: "#666", cursor: "pointer", fontSize: "18px" }}
+        >
+          ×
+        </button>
+      </div>
+      
+      <div style={{ fontWeight: 600, marginTop: "8px", fontSize: "15px" }}>
+        {task.title}
+      </div>
+      
+      <div style={{ fontSize: "13px", color: "#bbb", marginTop: "4px", display: "flex", alignItems: "center", gap: "4px" }}>
+        <span> Due at {task.time}</span>
+        <span style={{ color: "#555" }}>•</span>
+        <span>P{task.priority}</span>
+      </div>
+    </div>
+  ))}
+</div>
+
     </div>
   );
 }
