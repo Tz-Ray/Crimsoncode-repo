@@ -49,7 +49,7 @@ export default function App() {
   const [anchorDate, setAnchorDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [tasks, setTasks] = useState<Task[]>(loadTasks);
-
+  //should be new const use state here
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDesc, setNewTaskDesc] = useState("");
   const [newTaskTime, setNewTaskTime] = useState("");
