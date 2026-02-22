@@ -20,6 +20,12 @@ function loadTasks(): Task[] {
   }
 }
 
+const PRIORITY_COLORS: Record<1 | 2 | 3, string> = {
+  1: "#ff4d4f", // Red
+  2: "#faad14", // Yellow/Gold
+  3: "#1890ff", // Blue
+};
+
 export default function App() {
   const [anchorDate, setAnchorDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
@@ -28,6 +34,7 @@ export default function App() {
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDesc, setNewTaskDesc] = useState("");
   const [newTaskTime, setNewTaskTime] = useState("");
+  const [newPriorityValue, setPriority] = useState<1 | 2 | 3>(1);
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
@@ -83,6 +90,7 @@ export default function App() {
       date: selectedDateKey,
       time: newTaskTime || undefined,
       completed: false,
+      priority: newPriorityValue
     };
 
     setTasks((prev) => [...prev, task]);
@@ -175,11 +183,13 @@ export default function App() {
                       <div key={t.id} style={{ whiteSpace: "nowrap",
                        overflow: "hidden", 
                        textOverflow: "ellipsis", 
-                       color: t.completed ? "#2e7d32" : "inherit",
+                       color: t.completed 
+                        ? "#2e7d32" 
+                        : PRIORITY_COLORS[t.priority as 1 | 2 | 3],
                        textDecoration: t.completed ? "line-through" : "none",
                        opacity: t.completed ? 0.7 : 1 }}>
                         • {t.title}
-                      , {t.time}
+                      , {t.time}  -  P{t.priority}
                       </div>
                     ))}
                 </div>
@@ -243,6 +253,16 @@ export default function App() {
                 onChange={(e) => setNewTaskTime(e.target.value)}
                 style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
               />
+              <select
+                value = {newPriorityValue}
+                onChange={(e) => setPriority(Number(e.target.value) as 1 | 2 | 3)}
+                style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+              >
+                <option value="1">Priority 1 (High)</option>
+                <option value="2">Priority 2 (Medium)</option>
+                <option value="3">Priority 3 (Low)</option>
+              </select>
+
               <button 
                 onClick={addTask}
                 style={{ padding: '8px', background: '#007bff', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer' }}
