@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from "react";
-import { addMonths, subMonths } from "date-fns";
+import { addMonths, subMonths, startOfMonth, endOfMonth } from "date-fns";
 import {
   buildMonthGrid,
   toDateKey,
@@ -8,6 +8,7 @@ import {
   isToday,
 } from "./calendarUtils";
 import type { Task } from "./types";
+import { runAiAction } from "./aiClient";
 
 const STORAGE_KEY = "crimsoncode_tasks_v1";
 
@@ -26,15 +27,37 @@ const PRIORITY_COLORS: Record<1 | 2 | 3, string> = {
   3: "#1890ff", // Blue
 };
 
+type AiSummaryResult = {
+  headline: string;
+  summary: string;
+  stats?: {
+    total: number;
+    completed: number;
+    pending: number;
+    withTime: number;
+  };
+  upcoming?: Array<{
+    title: string;
+    date: string;
+    time?: string;
+  }>;
+  suggestions?: string[];
+  warnings?: string[];
+};
+
 export default function App() {
   const [anchorDate, setAnchorDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState(new Date());
   const [tasks, setTasks] = useState<Task[]>(loadTasks);
-  //should be new const use state here
+
   const [newTaskTitle, setNewTaskTitle] = useState("");
   const [newTaskDesc, setNewTaskDesc] = useState("");
   const [newTaskTime, setNewTaskTime] = useState("");
   const [newPriorityValue, setPriority] = useState<1 | 2 | 3>(1);
+
+  const [aiSummary, setAiSummary] = useState<AiSummaryResult | null>(null);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState<string>("");
 
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
@@ -54,17 +77,18 @@ export default function App() {
     const task: Task = {
       id: crypto.randomUUID(),
       title,
-      description: newTaskDesc,
+      description: newTaskDesc || undefined,
       date: selectedDateKey,
       time: newTaskTime || undefined,
       completed: false,
-      priority: newPriorityValue
+      priority: newPriorityValue,
     };
 
     setTasks((prev) => [...prev, task]);
     setNewTaskTitle("");
     setNewTaskDesc("");
     setNewTaskTime("");
+    setPriority(1);
   }
 
   function toggleTask(id: string) {
@@ -82,30 +106,108 @@ export default function App() {
     return tasks.filter((t) => t.date === key).length;
   }
 
+  async function summarizeMonth() {
+    try {
+      setAiLoading(true);
+      setAiError("");
+      setAiSummary(null);
+
+      const rangeStart = toDateKey(startOfMonth(anchorDate));
+      const rangeEnd = toDateKey(endOfMonth(anchorDate));
+
+      // Filter to current month only (lexicographic compare works for YYYY-MM-DD)
+      const tasksInMonth = tasks.filter(
+        (t) => t.date >= rangeStart && t.date <= rangeEnd
+      );
+
+      if (tasksInMonth.length === 0) {
+        setAiError("No tasks in this month to summarize.");
+        return;
+      }
+
+      const response = await runAiAction({
+        version: "1",
+        action: "summarizeTasks",
+        payload: {
+          rangeLabel: format(anchorDate, "MMMM yyyy"),
+          tasks: tasksInMonth.map((t) => ({
+            id: t.id,
+            title: t.title,
+            date: t.date,
+            time: t.time,
+            completed: t.completed,
+            notes: t.description, // map your description field to generic notes
+            tags: t.priority ? [`priority-${t.priority}`] : undefined,
+          })),
+        },
+        context: {
+          view: "month",
+          rangeStart,
+          rangeEnd,
+        },
+      });
+
+      if (!response.ok) {
+        setAiError(response.error?.message || "AI request failed");
+        return;
+      }
+
+      setAiSummary((response.result as AiSummaryResult) || null);
+    } catch (err) {
+      setAiError(err instanceof Error ? err.message : "Unknown error");
+    } finally {
+      setAiLoading(false);
+    }
+  }
+
   return (
-    <div style={{ display: "grid", gridTemplateColumns: "1fr 320px", height: "100vh", fontFamily: "sans-serif" }}>
+    <div
+      style={{
+        display: "grid",
+        gridTemplateColumns: "1fr 360px",
+        height: "100vh",
+        fontFamily: "sans-serif",
+      }}
+    >
       {/* Calendar side */}
       <div style={{ padding: 16, borderRight: "1px solid #ddd" }}>
         {/* Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 12 }}>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 8,
+            marginBottom: 12,
+          }}
+        >
           <button onClick={() => setAnchorDate(subMonths(anchorDate, 1))}>◀</button>
           <button onClick={() => setAnchorDate(new Date())}>Today</button>
           <button onClick={() => setAnchorDate(addMonths(anchorDate, 1))}>▶</button>
           <h2 style={{ margin: "0 0 0 8px" }}>{format(anchorDate, "MMMM yyyy")}</h2>
         </div>
 
-        {/* Placeholder view bar (for later) */}
+        {/* View bar (placeholder for future) */}
         <div style={{ display: "flex", gap: 8, marginBottom: 12 }}>
           <button style={{ fontWeight: "bold" }}>Month</button>
           <button disabled>Week</button>
-          <button style={{fontWeight: "bold"}}>Day</button>
+          <button disabled>Day</button>
           <button disabled>Year</button>
         </div>
 
         {/* Weekday labels */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(7, 1fr)", gap: 6, marginBottom: 6 }}>
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(7, 1fr)",
+            gap: 6,
+            marginBottom: 6,
+          }}
+        >
           {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
-            <div key={d} style={{ fontSize: 12, fontWeight: 600, textAlign: "center" }}>
+            <div
+              key={d}
+              style={{ fontSize: 12, fontWeight: 600, textAlign: "center" }}
+            >
               {d}
             </div>
           ))}
@@ -132,7 +234,13 @@ export default function App() {
                   cursor: "pointer",
                 }}
               >
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                  }}
+                >
                   <span
                     style={{
                       fontWeight: isToday(day) ? 700 : 400,
@@ -141,29 +249,46 @@ export default function App() {
                   >
                     {format(day, "d")}
                   </span>
+
                   {count > 0 && (
-                    <span style={{ fontSize: 11, border: "1px solid #aaa", borderRadius: 999, padding: "0 6px" }}>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        border: "1px solid #aaa",
+                        borderRadius: 999,
+                        padding: "0 6px",
+                      }}
+                    >
                       {count}
                     </span>
                   )}
                 </div>
 
-                {/* Tiny preview (up to 2 task titles) */}
+                {/* Tiny preview (up to 2 tasks) */}
                 <div style={{ marginTop: 4, fontSize: 11 }}>
                   {tasks
                     .filter((t) => t.date === toDateKey(day))
                     .slice(0, 2)
-                    .map((t) => (
-                      <div key={t.id} style={{ whiteSpace: "nowrap",
-                       overflow: "hidden", 
-                       textOverflow: "ellipsis", 
-                       color: t.completed ? "#2e7d32" : PRIORITY_COLORS[t.priority as 1 | 2 | 3],
-                       textDecoration: t.completed ? "line-through" : "none",
-                       opacity: t.completed ? 0.7 : 1 }}>
-                        • {t.title}
-                      ,  {t.time}  -  P{t.priority}
-                      </div>
-                    ))}
+                    .map((t) => {
+                      const p = (t.priority || 3) as 1 | 2 | 3;
+                      return (
+                        <div
+                          key={t.id}
+                          style={{
+                            whiteSpace: "nowrap",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            color: t.completed ? "#2e7d32" : PRIORITY_COLORS[p],
+                            textDecoration: t.completed ? "line-through" : "none",
+                            opacity: t.completed ? 0.7 : 1,
+                          }}
+                          title={`${t.title}${t.time ? ` • ${t.time}` : ""} • P${p}`}
+                        >
+                          • {t.title}
+                          {t.time ? `, ${t.time}` : ""} - P{p}
+                        </div>
+                      );
+                    })}
                 </div>
               </button>
             );
@@ -172,7 +297,7 @@ export default function App() {
       </div>
 
       {/* Selected day panel */}
-      <div style={{ padding: 16 }}>
+      <div style={{ padding: 16, overflowY: "auto" }}>
         <h3 style={{ marginTop: 0 }}>{format(selectedDate, "EEEE, MMM d")}</h3>
 
         <div style={{ display: "grid", gap: 8, marginBottom: 12 }}>
@@ -181,28 +306,36 @@ export default function App() {
             onChange={(e) => setNewTaskTitle(e.target.value)}
             placeholder="Task title"
           />
+
           <textarea
             value={newTaskDesc}
             onChange={(e) => setNewTaskDesc(e.target.value)}
             placeholder="Add description ..."
             rows={3}
-            style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd', fontFamily: 'inherit' }}
-          /> 
+            style={{
+              padding: "8px",
+              borderRadius: "4px",
+              border: "1px solid #ddd",
+              fontFamily: "inherit",
+            }}
+          />
+
           <input
             type="time"
             value={newTaskTime}
             onChange={(e) => setNewTaskTime(e.target.value)}
           />
+
           <select
-            value = {newPriorityValue}
+            value={newPriorityValue}
             onChange={(e) => setPriority(Number(e.target.value) as 1 | 2 | 3)}
-            style={{ padding: '8px', borderRadius: '4px', border: '1px solid #ddd' }}
+            style={{ padding: "8px", borderRadius: "4px", border: "1px solid #ddd" }}
           >
             <option value="1">Priority 1 (High)</option>
             <option value="2">Priority 2 (Medium)</option>
             <option value="3">Priority 3 (Low)</option>
           </select>
-          
+
           <button onClick={addTask}>Add Task</button>
         </div>
 
@@ -211,72 +344,153 @@ export default function App() {
             <div style={{ color: "#666" }}>No tasks for this day.</div>
           )}
 
-          {tasksForSelectedDay.map((task) => (
+          {tasksForSelectedDay.map((task) => {
+            const p = (task.priority || 3) as 1 | 2 | 3;
+            return (
+              <div
+                key={task.id}
+                style={{
+                  border: "1px solid #ddd",
+                  borderRadius: 8,
+                  padding: 10,
+                  display: "grid",
+                  gridTemplateColumns: "auto 1fr auto",
+                  gap: 12,
+                  alignItems: "start",
+                  marginBottom: 8,
+                  background: task.completed ? "#f9f9f9" : "white",
+                }}
+              >
+                <input
+                  type="checkbox"
+                  checked={task.completed}
+                  onChange={() => toggleTask(task.id)}
+                  style={{ marginTop: 4 }}
+                />
+
+                <div>
+                  <div
+                    style={{
+                      fontWeight: 600,
+                      textDecoration: task.completed ? "line-through" : "none",
+                      color: task.completed ? "#888" : "#000",
+                    }}
+                  >
+                    {task.title}
+                  </div>
+
+                  <div
+                    style={{
+                      marginTop: 4,
+                      fontSize: 12,
+                      color: task.completed ? "#999" : PRIORITY_COLORS[p],
+                    }}
+                  >
+                    Priority {p}
+                  </div>
+
+                  {task.description && (
+                    <div
+                      style={{
+                        fontSize: 13,
+                        color: task.completed ? "#aaa" : "#555",
+                        marginTop: 4,
+                        whiteSpace: "pre-wrap",
+                        lineHeight: "1.4",
+                      }}
+                    >
+                      {task.description}
+                    </div>
+                  )}
+
+                  {task.time && (
+                    <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
+                      {task.time}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => deleteTask(task.id)}
+                  style={{
+                    padding: "4px 8px",
+                    cursor: "pointer",
+                    background: "#fff",
+                    border: "1px solid #ddd",
+                    borderRadius: 4,
+                    fontSize: 12,
+                    color: "#d9534f",
+                  }}
+                >
+                  Delete
+                </button>
+              </div>
+            );
+          })}
+        </div>
+
+        {/* AI Summary Section */}
+        <div style={{ marginTop: 16, borderTop: "1px solid #ddd", paddingTop: 12 }}>
+          <button onClick={summarizeMonth} disabled={aiLoading}>
+            {aiLoading ? "Summarizing..." : "Summarize this month"}
+          </button>
+
+          {aiError && <div style={{ color: "red", marginTop: 8 }}>{aiError}</div>}
+
+          {aiSummary && (
             <div
-              key={task.id}
               style={{
+                marginTop: 10,
                 border: "1px solid #ddd",
                 borderRadius: 8,
                 padding: 10,
-                display: "grid",
-                gridTemplateColumns: "auto 1fr auto",
-                gap: 12,
-                alignItems: "start", 
-                marginBottom: 8,
-                background: task.completed ? "#f9f9f9" : "white"
+                background: "#fafafa",
               }}
             >
-              <input
-                type="checkbox"
-                checked={task.completed}
-                onChange={() => toggleTask(task.id)}
-                style={{ marginTop: 4 }}
-              />
+              <div style={{ fontWeight: 700 }}>{aiSummary.headline}</div>
+              <div style={{ marginTop: 6 }}>{aiSummary.summary}</div>
 
-              <div>
-                <div style={{ 
-                  fontWeight: 600, 
-                  textDecoration: task.completed ? "line-through" : "none",
-                  color: task.completed ? "#888" : "#000"
-                }}>
-                  {task.title}
+              {aiSummary.stats && (
+                <div style={{ marginTop: 8, fontSize: 13, color: "#444" }}>
+                  Total: {aiSummary.stats.total} · Completed: {aiSummary.stats.completed} · Pending:{" "}
+                  {aiSummary.stats.pending} · Timed: {aiSummary.stats.withTime}
                 </div>
+              )}
 
-                {task.description && (
-                  <div style={{
-                    fontSize: 13,
-                    color: task.completed ? "#aaa" : "#555",
-                    marginTop: 4,
-                    whiteSpace: "pre-wrap",
-                    lineHeight: "1.4"
-                  }}>
-                    {task.description}
-                  </div>
-                )}
+              {Array.isArray(aiSummary.upcoming) && aiSummary.upcoming.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>Upcoming</div>
+                  <ul style={{ marginTop: 4, paddingLeft: 18 }}>
+                    {aiSummary.upcoming.map((u, i) => (
+                      <li key={`${u.title}-${u.date}-${i}`}>
+                        {u.title} ({u.date}
+                        {u.time ? ` ${u.time}` : ""})
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-                {task.time && (
-                  <div style={{ fontSize: 12, color: "#888", marginTop: 4 }}>
-                    {task.time}
-                  </div>
-                )}
-              </div>
+              {Array.isArray(aiSummary.suggestions) && aiSummary.suggestions.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontWeight: 600, fontSize: 13 }}>Suggestions</div>
+                  <ul style={{ marginTop: 4, paddingLeft: 18 }}>
+                    {aiSummary.suggestions.map((s, i) => (
+                      <li key={i}>{s}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
 
-              <button 
-                onClick={() => deleteTask(task.id)}
-                style={{
-                  padding: "4px 8px",
-                  cursor: "pointer",
-                  background: "#fff",
-                  border: "1px solid #ddd",
-                  borderRadius: 4,
-                  fontSize: 12,
-                  color: "#d9534f"
-                }}
-              >
-                Delete
-              </button>
+              {Array.isArray(aiSummary.warnings) && aiSummary.warnings.length > 0 && (
+                <div style={{ marginTop: 8, color: "#8a6d3b", fontSize: 12 }}>
+                  {aiSummary.warnings.map((w, i) => (
+                    <div key={i}>⚠ {w}</div>
+                  ))}
+                </div>
+              )}
             </div>
-          ))}
+          )}
         </div>
       </div>
     </div>

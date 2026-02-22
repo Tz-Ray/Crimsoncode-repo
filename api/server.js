@@ -33,3 +33,7 @@ app.post("/ai/chat", (req, res) => {
 app.listen(PORT, () => {
   console.log(`API running on http://localhost:${PORT}`);
 });
+
+app.get("/", (_req, res) => {
+  res.send("API is running. Use /health or POST /ai/run");
+});
