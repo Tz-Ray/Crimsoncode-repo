@@ -30,7 +30,7 @@ app.post("/ai/chat", (req, res) => {
   res.json({ reply: `Demo response: ${parsed.data.prompt}` });
 });
 
-app.listen(PORT, () => {
+app.listen(PORT, "0.0.0.0", () => {
   console.log(`API running on http://localhost:${PORT}`);
 });
 
