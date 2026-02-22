@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const dotenv = require("dotenv");
 const { z } = require("zod");
+const aiRouter = require("./ai/router");
 
 dotenv.config();
 
@@ -10,6 +11,7 @@ const PORT = process.env.PORT || 3001;
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
+app.use("/ai", aiRouter);
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true });
